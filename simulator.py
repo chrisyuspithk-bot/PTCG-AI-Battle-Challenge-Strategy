@@ -202,6 +202,7 @@ class GameState:
     def get_visible_state(self, player: Player) -> dict:
         """Return the game state visible to a given player (hidden info masked)."""
         opp = player.opponent()
+        can_attack = (self.turn_number > 1 or player == Player.P2)
         return {
             'my_hand': [c.name for c in self.hands[player]],
             'my_hand_cards': self.hands[player],
@@ -221,6 +222,7 @@ class GameState:
             'current_player': self.current_player,
             'energy_attached': self.energy_attached_this_turn,
             'supporter_played': self.supporter_played_this_turn,
+            'can_attack': can_attack,
         }
 
 
