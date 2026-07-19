@@ -51,18 +51,25 @@ def select_action(obs: dict) -> list[int]:
     n = len(opts)
     if n == 0: return []
 
-    mc = max(sel.get('maxCount', 1) or 1, 1)
-    mic = max(sel.get('minCount', 0) or 0, 0)
-    if n == 1: return [0][:mc]
+    mc = max(int(sel.get('maxCount', 1) or 1), 1)
+    mic = max(int(sel.get('minCount', 0) or 0), 0)
+
+    # SAFETY: never return empty when options exist
+    def _safe(result):
+        if not result and n > 0:
+            return [0][:mc]
+        return result[:mc]
+
+    if n == 1: return _safe([0])
 
     sel_type = sel.get('type', -1)
 
     if sel_type == SEL_MAIN:
         cur = obs.get('current') or {}
         pls = cur.get('players') or []
-        yi = cur.get('yourIndex', 0)
-        me = pls[yi] if yi < len(pls) else {}
-        op = pls[1-yi] if (1-yi) < len(pls) else {}
+        yi = int(cur.get('yourIndex', 0) or 0)
+        me = pls[yi] if 0 <= yi < len(pls) else {}
+        op = pls[1-yi] if 0 <= (1-yi) < len(pls) else {}
         ma = (me.get('active') or [None])[0]
         oa = (op.get('active') or [None])[0]
         mb = me.get('bench') or []
@@ -73,13 +80,11 @@ def select_action(obs: dict) -> list[int]:
         iko = mdmg > 0 and mdmg >= ohp
         ocko = odmg > 0 and odmg >= mhp
         ea = cur.get('energyAttached', False)
-
-        # Best bench attacker (for energy priority)
         best_bdmg = max((_dmg(b) for b in mb), default=0)
 
         bi, bp = 0, 99
         for i, o in enumerate(opts):
-            t = o.get('type', -1)
+            t = int(o.get('type', -1) or -1)
             p = 50
             if t == ATTACK:
                 p = 0 if iko else (5 if mdmg > 0 else 50)
@@ -88,16 +93,14 @@ def select_action(obs: dict) -> list[int]:
             elif t == EVOLVE: p = 2
             elif t == PLAY: p = 3 if len(mb) < 3 else 10
             elif t == ATTACH:
-                # Prioritize attaching if active is weak and bench has stronger
                 p = 3 if (not ea and best_bdmg > mdmg > 0) else (4 if not ea else 20)
             elif t in (ABILITY, DISCARD): p = 6
             elif t == END: p = 99
             if p < bp: bp, bi = p, i
 
-        return [bi][:mc]
+        return _safe([bi])
 
-    # Sub-selection
-    return list(range(max(mic, min(mc, n))))[:mc]
+    return _safe(list(range(max(mic, min(mc, n)))))
 
 def agent(obs_dict: dict) -> list[int]:
     global _CALL, _DECK
