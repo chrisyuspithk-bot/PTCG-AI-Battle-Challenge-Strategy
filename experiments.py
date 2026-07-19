@@ -178,29 +178,32 @@ def experiment_energy_ratio(card_pool_path: str, cards: dict,
                             num_games: int = 50) -> dict:
     """
     Hypothesis: There's an optimal energy-to-draw ratio. Too much energy
-    floods your hand with unplayable cards; too little means you can't attack.
+    floods your hand; too little means you can't attack.
 
-    Tests Team Rocket deck at 3 energy levels: 8, 16, 24 energy cards.
+    Builds 3 variants of TR deck (8/16/24 energy) and tests each against
+    a fixed Aggro opponent for comparable results.
     """
-    builder = DeckBuilder(cards, build_card_metadata(cards))
     arch = ARCHETYPES['team_rocket']
+    agg_arch = ARCHETYPES['aggro_basic']
+    builder = DeckBuilder(cards, build_card_metadata(cards))
+
+    # Reference opponent (fixed)
+    opp_deck, _ = builder.build(agg_arch)
 
     results = {}
     for energy_count in [8, 16, 24]:
         deck, report = builder.build(arch, energy_count=energy_count)
-        # Mirror match
-        r = run_tournament(card_pool_path, deck, deck,
-                           agent_a=BaselineAgent(seed=42),
-                           agent_b=BaselineAgent(seed=43),
-                           num_games=num_games, seed=42)
+        # Test against fixed Aggro opponent
+        r = test_matchup(card_pool_path, deck, opp_deck,
+                         f"TR({energy_count}e)", "Aggro",
+                         num_games=num_games)
 
-        avg_turns = sum(g['turns'] for g in r['games']) / max(1, len(r['games']))
         results[f"energy_{energy_count}"] = {
             'energy_count': report['energy_count'],
             'pokemon_count': report['pokemon_count'],
             'trainer_count': report['trainer_count'],
-            'p2_win_rate': r['win_rate_b'],
-            'avg_turns': avg_turns,
+            'win_rate': r['win_rate_a'],
+            'avg_turns': r['avg_turns'],
             'total_games': num_games,
         }
 
@@ -247,6 +250,171 @@ def experiment_archetype_matrix(card_pool_path: str, cards: dict,
             }
 
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 6: Deck Iteration Cycle
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def experiment_deck_iteration(card_pool_path: str, cards: dict,
+                               num_games: int = 50) -> dict:
+    """
+    Hypothesis: Incremental deck improvements produce measurable win-rate gains.
+    Starts with a minimal Team Rocket deck, then adds cards one layer at a time,
+    measuring win rate against a fixed Aggro opponent at each step.
+    """
+    builder = DeckBuilder(cards, build_card_metadata(cards))
+    agg_deck, _ = builder.build(ARCHETYPES['aggro_basic'])
+
+    results = []
+    deck = []
+    energy_ids = builder.name_to_ids.get('Basic {D} Energy', [])
+
+    def _current_deck():
+        d = list(deck)
+        while len(d) < DECK_SIZE and energy_ids:
+            d.append(cards[energy_ids[0]])
+        return d[:DECK_SIZE]
+
+    def _has_basic(d):
+        return any('Basic' in c.stage and 'Pokémon' in c.stage for c in d)
+
+    # Step 0: Add Mewtwo ex (4 copies) — baseline with one attacker
+    for name in ["Team Rocket's Mewtwo ex"]:
+        ids = builder.name_to_ids.get(name, [])
+        if ids:
+            for _ in range(4):
+                deck.append(cards[ids[0]])
+    r = test_matchup(card_pool_path, _current_deck(), agg_deck,
+                     "Step 0: Base (Mewtwo)", "Aggro", num_games=num_games)
+    results.append({'step': 0, 'change': 'Mewtwo ex (4x) baseline',
+                    'win_rate': r['win_rate_a'], 'avg_turns': r['avg_turns']})
+
+    # Step 1: Add Kangaskhan ex (4 copies)
+    for name in ["Team Rocket's Kangaskhan ex"]:
+        ids = builder.name_to_ids.get(name, [])
+        if ids:
+            for _ in range(4):
+                deck.append(cards[ids[0]])
+    r = test_matchup(card_pool_path, _current_deck(), agg_deck,
+                     "Step 1: +Kangaskhan ex", "Aggro", num_games=num_games)
+    results.append({'step': 1, 'change': '+ Kangaskhan ex (4x)',
+                    'win_rate': r['win_rate_a'], 'avg_turns': r['avg_turns']})
+
+    # Step 2: Add more Rocket basics (fill bench)
+    for name in ["Team Rocket's Houndour", "Team Rocket's Larvitar",
+                 "Team Rocket's Nidoran♀", "Team Rocket's Ekans"]:
+        ids = builder.name_to_ids.get(name, [])
+        if ids:
+            for _ in range(2):
+                deck.append(cards[ids[0]])
+    r = test_matchup(card_pool_path, _current_deck(), agg_deck,
+                     "Step 2: +Bench fillers", "Aggro", num_games=num_games)
+    results.append({'step': 2, 'change': '+ 8 bench basics',
+                    'win_rate': r['win_rate_a'], 'avg_turns': r['avg_turns']})
+
+    # Step 3: Add trainers (Ultra Ball + Boss)
+    for name in ["Ultra Ball", "Boss's Orders"]:
+        ids = builder.name_to_ids.get(name, [])
+        if ids:
+            for _ in range(4):
+                deck.append(cards[ids[0]])
+    r = test_matchup(card_pool_path, _current_deck(), agg_deck,
+                     "Step 3: +Trainers", "Aggro", num_games=num_games)
+    results.append({'step': 3, 'change': '+ Ultra Ball (4x) + Boss (4x)',
+                    'win_rate': r['win_rate_a'], 'avg_turns': r['avg_turns']})
+
+    return {'iterations': results, 'opponent': 'Aggro Basics'}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 7: Attacker Efficiency Breakdown
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def experiment_attacker_breakdown(card_pool_path: str, cards: dict,
+                                   num_games: int = 50) -> dict:
+    """
+    Hypothesis: Individual attacker quality (HP, damage, energy cost)
+    determines win rate more than deck synergy.
+
+    Builds single-attacker decks (4 copies of one Pokémon + energy) and
+    measures each against the same Aggro opponent.
+    """
+    builder = DeckBuilder(cards, build_card_metadata(cards))
+    agg_deck, _ = builder.build(ARCHETYPES['aggro_basic'])
+
+    # Test attackers individually — only the top 2 (others have 0 dmg)
+    attackers = [
+        "Team Rocket's Mewtwo ex",    # 280 HP, 160 dmg, 3e — anchor
+        "Team Rocket's Kangaskhan ex", # 230 HP, 120 dmg, 3e — secondary
+        "Team Rocket's Articuno",      # 120 HP, 60 dmg, 3e — budget
+    ]
+
+    results = []
+    energy_ids = builder.name_to_ids.get('Basic {D} Energy', [])
+
+    for atk_name in attackers:
+        ids = builder.name_to_ids.get(atk_name, [])
+        if not ids:
+            continue
+        card = cards[ids[0]]
+
+        # Build deck: 4 copies + energy
+        deck = [cards[ids[0]] for _ in range(4)]
+        while len(deck) < DECK_SIZE and energy_ids:
+            deck.append(cards[energy_ids[0]])
+
+        r = test_matchup(card_pool_path, deck, agg_deck,
+                         atk_name, "Aggro", num_games=num_games)
+
+        results.append({
+            'attacker': atk_name,
+            'hp': card.hp,
+            'damage': card.move_damage,
+            'energy_cost': card.move_move_cost if hasattr(card, 'move_move_cost') else 'n/a',
+            'prizes_given': card.prizes_given,
+            'is_ex': card.is_ex,
+            'win_rate': r['win_rate_a'],
+            'avg_turns': r['avg_turns'],
+        })
+
+    # Sort by win rate
+    results.sort(key=lambda x: x['win_rate'], reverse=True)
+    return {'attackers': results, 'opponent': 'Aggro Basics'}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 8: Win Rate Stability
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def experiment_stability(card_pool_path: str, deck: list,
+                          num_trials: int = 10, num_games: int = 100) -> dict:
+    """
+    Hypothesis: Win rates stabilize within 100 games. Measures variance
+    across repeated tournament runs to establish confidence intervals.
+
+    Runs `num_trials` independent tournaments of `num_games` each,
+    tracking P1 win rate distribution.
+    """
+    rates = []
+    for trial in range(num_trials):
+        r = run_tournament(card_pool_path, deck, deck,
+                           agent_a=BaselineAgent(seed=42 + trial),
+                           agent_b=BaselineAgent(seed=142 + trial),
+                           num_games=num_games, seed=42 + trial * 100)
+        rates.append(r['win_rate_a'])
+
+    import statistics
+    return {
+        'num_trials': num_trials,
+        'games_per_trial': num_games,
+        'mean_win_rate': statistics.mean(rates),
+        'std_dev': statistics.stdev(rates) if len(rates) > 1 else 0,
+        'min_rate': min(rates),
+        'max_rate': max(rates),
+        'range': max(rates) - min(rates),
+        'all_rates': [round(r, 1) for r in rates],
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -310,7 +478,7 @@ def run_all_experiments(card_pool_path: str, output_path: str = None,
 
     # ── Experiment 4: Energy Ratio ──
     print(f"\n{'='*60}")
-    print("EXPERIMENT 4: Energy-to-Draw Ratio")
+    print("EXPERIMENT 4: Energy-to-Draw Ratio (vs Aggro)")
     print(f"{'='*60}")
     t0 = time.time()
     all_results['energy_ratio'] = experiment_energy_ratio(
@@ -318,7 +486,7 @@ def run_all_experiments(card_pool_path: str, output_path: str = None,
     print(f"  Done in {time.time()-t0:.1f}s")
     for key, r in all_results['energy_ratio'].items():
         print(f"  {key}: {r['energy_count']}e/{r['pokemon_count']}p/{r['trainer_count']}t "
-              f"— P2 wins {r['p2_win_rate']:.0f}%, avg {r['avg_turns']:.1f} turns")
+              f"— win rate {r['win_rate']:.0f}%, avg {r['avg_turns']:.1f} turns")
 
     # ── Experiment 5: Archetype Matrix ──
     print(f"\n{'='*60}")
@@ -331,6 +499,43 @@ def run_all_experiments(card_pool_path: str, output_path: str = None,
     for key, r in all_results['archetype_matrix'].items():
         print(f"  {r['name_a']} vs {r['name_b']}: "
               f"{r['win_rate_a']:.0f}% / {r['win_rate_b']:.0f}%")
+
+    # ── Experiment 6: Deck Iteration ──
+    print(f"\n{'='*60}")
+    print("EXPERIMENT 6: Deck Iteration Cycle")
+    print(f"{'='*60}")
+    t0 = time.time()
+    all_results['deck_iteration'] = experiment_deck_iteration(
+        card_pool_path, cards, num_games)
+    print(f"  Done in {time.time()-t0:.1f}s")
+    for step in all_results['deck_iteration']['iterations']:
+        bar = '█' * int(step['win_rate'] / 5)
+        print(f"  Step {step['step']}: {step['change']:30s} → {step['win_rate']:5.0f}% {bar}")
+
+    # ── Experiment 7: Attacker Breakdown ──
+    print(f"\n{'='*60}")
+    print("EXPERIMENT 7: Attacker Efficiency Breakdown")
+    print(f"{'='*60}")
+    t0 = time.time()
+    all_results['attacker_breakdown'] = experiment_attacker_breakdown(
+        card_pool_path, cards, num_games)
+    print(f"  Done in {time.time()-t0:.1f}s")
+    for a in all_results['attacker_breakdown']['attackers']:
+        print(f"  {a['attacker']:35s} HP:{a['hp']:3d} Dmg:{a['damage']:3d} "
+              f"→ {a['win_rate']:.0f}%")
+
+    # ── Experiment 8: Stability ──
+    print(f"\n{'='*60}")
+    print("EXPERIMENT 8: Win Rate Stability (TR mirror)")
+    print(f"{'='*60}")
+    t0 = time.time()
+    all_results['stability'] = experiment_stability(
+        card_pool_path, team_rocket_deck, num_trials=5, num_games=100)
+    print(f"  Done in {time.time()-t0:.1f}s")
+    s = all_results['stability']
+    print(f"  Mean P1 rate: {s['mean_win_rate']:.1f}% ± {s['std_dev']:.1f}% (σ)")
+    print(f"  Range: {s['min_rate']:.1f}% – {s['max_rate']:.1f}%")
+    print(f"  Rates: {s['all_rates']}")
 
     # ── Export ──
     if output_path:

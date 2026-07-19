@@ -249,7 +249,7 @@ class DeckBuilder:
                     added = _add_copies(c.name, min(4, needed))
                     needed -= added
 
-        # 4. Fill remaining with energy
+        # 4. Fill remaining with energy (respect energy_count parameter)
         energy_ids = self.name_to_ids.get(archetype.energy_type, [])
         if not energy_ids:
             for cid, card in self.cards.items():
@@ -257,11 +257,15 @@ class DeckBuilder:
                     energy_ids.append(cid)
                     break
 
-        while len(deck) < DECK_SIZE:
-            if energy_ids:
-                deck.append(self.cards[energy_ids[0]])
-            else:
-                break
+        # Only add energy up to the specified energy_count
+        current_energy = sum(1 for c in deck if _is_energy(c))
+        while current_energy < energy_count and energy_ids:
+            deck.append(self.cards[energy_ids[0]])
+            current_energy += 1
+
+        # If deck still isn't full, pad with more energy
+        while len(deck) < DECK_SIZE and energy_ids:
+            deck.append(self.cards[energy_ids[0]])
 
         deck = deck[:DECK_SIZE]
         report['total_cards'] = len(deck)
