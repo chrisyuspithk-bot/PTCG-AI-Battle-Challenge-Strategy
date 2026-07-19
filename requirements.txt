@@ -1,0 +1,2 @@
+# Pokémon TCG AI Battle Challenge - Phase 1
+# No external dependencies required for card analysis (stdlib only)
