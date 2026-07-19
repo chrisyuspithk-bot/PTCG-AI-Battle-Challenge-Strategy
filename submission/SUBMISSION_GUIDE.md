@@ -1,73 +1,56 @@
-# Kaggle Ladder Submission Guide
+# Kaggle Simulation Category — Submission Guide
 
-## Step 1: Get the SDK (Required for submission)
-
-1. Sign in to Kaggle and go to:
-   https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/data
-
-2. Accept the competition rules
-
-3. Download the "Sample Submission" or SDK package
-   - It contains the `cg/` engine bindings (compiled C++ binary)
-   - The engine is x86-64 Linux only
-
-4. Place the `cg/` directory inside `submission/`:
-   ```
-   submission/
-   ├── main.py          ← our agent
-   ├── deck.csv         ← Team Rocket Control deck
-   ├── cg/              ← official engine bindings (from Kaggle)
-   └── build_submission.sh
-   ```
-
-## Step 2: Build the Submission
+## Quick Submit (2 steps)
 
 ```bash
 cd submission/
-bash build_submission.sh
+bash build_submission.sh    # creates submission.tar.gz
 ```
 
-This creates `submission.tar.gz`
+Upload `submission.tar.gz` to:
+https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/submit
 
-## Step 3: Submit to Kaggle
+---
 
-1. Go to: https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/submit
-2. Upload `submission.tar.gz`
-3. Wait for validation (~2-5 minutes)
-4. The agent enters the ladder and starts auto-battling
+## Competition Details
 
-## Step 4: Get Results
-
-1. Go to: https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/leaderboard
-2. Find your team's Elo rating
-3. Check individual match history at:
-   https://www.kaggle.com/competitions/pokemon-tcg-ai-battle/submissions
-
-## What's in the submission
-
-| File | Purpose |
+| Detail | Value |
 |---|---|
-| `main.py` | Entry point — `agent(obs_dict) → list[int]` |
-| `deck.csv` | 60 card IDs: Team Rocket Control (24p/20t/16e) |
-| `cg/` | Official engine bindings (provided by competition) |
+| **Engine** | cabt (Matsuo Institute) |
+| **API docs** | https://matsuoinstitute.github.io/cabt/ |
+| **Entry deadline** | August 9, 2026 |
+| **Final submission** | August 16, 2026 |
+| **Matches end** | ~August 31, 2026 |
+| **Daily limit** | 5 submissions |
+| **Active agents** | Latest 2 per team |
+| **Starting Elo** | μ₀ = 600 |
+| **File limit** | 197.7 MiB |
+| **Agent location** | /kaggle_simulations/agent/ |
+| **Submission format** | .tar.gz with main.py + deck.csv at top level |
+
+## What's Submitted
+
+| File | Format |
+|---|---|
+| `main.py` | `agent(obs_dict) → list[int]` |
+| `deck.csv` | 60 card IDs, one per line, no headers |
 
 ## Agent Strategy
-- **Type**: Threat-aware heuristic (12 priority levels)
-- **Deck**: Team Rocket Control — Mewtwo ex anchor (280 HP/160 dmg)
-- **Expected Elo**: ~1200-1220 (simulator estimate)
+- **Type**: Threat-aware heuristic, 7 priority levels
+- **Deck**: Team Rocket Control (24p/20t/16e)
+- **Anchor**: Team Rocket's Mewtwo ex (280 HP / 160 dmg)
+- **Simulator WR**: 50% vs Aggro (N=200, position-balanced)
+
+## Validation
+After submission, a validation episode runs (agent vs itself). If it passes:
+- Agent enters ladder at 600 Elo
+- Auto-battles against similarly-rated opponents
+- Rating updates after each match (Gaussian N(μ,σ²))
 
 ## Troubleshooting
 
-### "cg/ directory not found"
-→ Download the SDK from Kaggle Data tab first
-
-### "deck.csv not found"
-→ Make sure deck.csv is in the submission/ directory
-
-### Agent crashes on Kaggle
-→ Check the submission logs on Kaggle. Our agent has multi-layer
-  fallback — it returns safe defaults on any error.
-
-### Import errors on Kaggle
-→ The cg/ bindings must be exactly as provided by Kaggle.
-  Do not rename or modify any files in cg/.
+| Issue | Fix |
+|---|---|
+| "Error" on submission page | Download agent logs, check stderr |
+| deck.csv wrong format | Must be 60 lines, one card ID per line, no headers |
+| Import errors | Engine is cabt, not cg. No external imports needed. |
