@@ -1,6 +1,5 @@
-"""PTCG AI Battle - Team Rocket Control v3 (INTEGER ENUMS FIXED)
-Engine: cabt - https://matsuoinstitute.github.io/cabt/
-Fix: option.type is integer OptionType enum, not string."""
+"""PTCG AI Battle - Team Rocket Control v4 (ROBUST)
+Engine: cabt - Integer enums + never-return-empty + card data fallback."""
 
 import os, sys, traceback
 from typing import Optional
@@ -8,10 +7,16 @@ from typing import Optional
 _CALL = 0
 _DECK: Optional[list[int]] = None
 
-# OptionType enum
+# OptionType enum (int)
 PLAY,ATTACH,EVOLVE,ABILITY,DISCARD = 6,7,8,9,10
 RETREAT,ATTACK,END = 11,12,13
 SEL_MAIN = 0
+
+# Known card HP/damage (fallback when attacks field missing)
+CARD = {
+    431: (280,160), 24: (230,120), 414: (120,90),
+    425: (120,80),  409: (130,70),  408: (70,30), 440: (60,20),
+}
 
 def read_deck() -> list[int]:
     for base in ['/kaggle_simulations/agent', '.']:
@@ -30,10 +35,14 @@ def _hp(p):
     if not p: return 0
     return max(0, (p.get('hp',0) or 0) - (p.get('damage',0) or 0))
 
-def _dmg(a):
-    if not a: return 0
-    try: return int(a[0].get('damage',0) or 0)
-    except: return 0
+def _dmg(p):
+    if not p: return 0
+    atks = p.get('attacks')
+    if atks:
+        try: return int(atks[0].get('damage',0) or 0)
+        except: pass
+    cid = p.get('id')
+    return CARD.get(cid, (0,0))[1] if cid else 0
 
 def select_action(obs: dict) -> list[int]:
     sel = obs.get('select')
@@ -41,10 +50,14 @@ def select_action(obs: dict) -> list[int]:
     opts = sel.get('option') or []
     n = len(opts)
     if n == 0: return []
-    if n == 1: return [0]
 
-    # Only use threat-aware logic for MAIN selection
-    if sel.get('type', -1) == SEL_MAIN:
+    mc = max(sel.get('maxCount', 1) or 1, 1)
+    mic = max(sel.get('minCount', 0) or 0, 0)
+    if n == 1: return [0][:mc]
+
+    sel_type = sel.get('type', -1)
+
+    if sel_type == SEL_MAIN:
         cur = obs.get('current') or {}
         pls = cur.get('players') or []
         yi = cur.get('yourIndex', 0)
@@ -55,13 +68,15 @@ def select_action(obs: dict) -> list[int]:
         mb = me.get('bench') or []
         mhp = _hp(ma) if ma else 0
         ohp = _hp(oa) if oa else 999
-        mdmg = _dmg(ma.get('attacks')) if ma else 0
-        odmg = _dmg(oa.get('attacks')) if oa else 0
+        mdmg = _dmg(ma) if ma else 0
+        odmg = _dmg(oa) if oa else 0
         iko = mdmg > 0 and mdmg >= ohp
         ocko = odmg > 0 and odmg >= mhp
-        hb = len(mb) > 0
-        bs = len(mb) < 3
         ea = cur.get('energyAttached', False)
+
+        # Best bench attacker (for energy priority)
+        best_bdmg = max((_dmg(b) for b in mb), default=0)
+
         bi, bp = 0, 99
         for i, o in enumerate(opts):
             t = o.get('type', -1)
@@ -69,22 +84,20 @@ def select_action(obs: dict) -> list[int]:
             if t == ATTACK:
                 p = 0 if iko else (5 if mdmg > 0 else 50)
             elif t == RETREAT:
-                p = 1 if (ocko and hb) else (8 if mhp < 50 and hb else 30)
+                p = 1 if (ocko and len(mb)>0) else (8 if mhp<50 and len(mb)>0 else 30)
             elif t == EVOLVE: p = 2
-            elif t == PLAY: p = 3 if bs else 10
-            elif t == ATTACH: p = 4 if not ea else 20
+            elif t == PLAY: p = 3 if len(mb) < 3 else 10
+            elif t == ATTACH:
+                # Prioritize attaching if active is weak and bench has stronger
+                p = 3 if (not ea and best_bdmg > mdmg > 0) else (4 if not ea else 20)
             elif t in (ABILITY, DISCARD): p = 6
             elif t == END: p = 99
             if p < bp: bp, bi = p, i
-        mc = sel.get('maxCount', 1) or 1
-        if mc <= 1: return [bi]
-        return [bi] + [0]*(mc-1)
 
-    # Sub-selection: pick first N valid options
-    mc = sel.get('maxCount', 1) or 1
-    mic = sel.get('minCount', 0) or 0
-    count = max(mic, min(mc, n))
-    return list(range(count))
+        return [bi][:mc]
+
+    # Sub-selection
+    return list(range(max(mic, min(mc, n))))[:mc]
 
 def agent(obs_dict: dict) -> list[int]:
     global _CALL, _DECK
