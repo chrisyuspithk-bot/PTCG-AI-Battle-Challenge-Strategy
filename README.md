@@ -20,12 +20,34 @@ Building an AI Training Agent and documenting the strategic reasoning behind it.
 
 | Phase | Status | Description |
 |---|---|---|
-| [Phase 1](https://github.com/chrisyuspithk-bot/PTCG-AI-Battle-Challenge-Strategy/tree/phase-1-card-analysis) | ✅ Done | Card pool analysis, efficiency metrics, synergy mapping, game rules |
-| Phase 2 | 🚧 In Progress | Game simulator engine |
-| Phase 3 | ⬜ Todo | Baseline heuristic agent |
-| Phase 4 | ⬜ Todo | Deck design & optimization |
-| Phase 5 | ⬜ Todo | Hypothesis testing & iteration |
+| [Phase 1](https://github.com/chrisyuspithk-bot/PTCG-AI-Battle-Challenge-Strategy) | ✅ Done | Card pool analysis, efficiency metrics, synergy mapping, game rules |
+| Phase 2 | ✅ Done | Game simulator engine — full game loop, KO/prize, tournament runner |
+| Phase 3 | ✅ Done | Baseline heuristic agent — threat assessment, KO calculus, survival logic |
+| Phase 4 | ✅ Done | Deck optimizer — 3 archetypes, matchup matrix, card impact analysis |
+| Phase 5 | 🚧 In Progress | Hypothesis testing — controlled experiments, iteration |
 | Phase 6 | ⬜ Todo | Kaggle writeup & figures |
+
+## Key Findings (So Far)
+
+### P2 Advantage is Archetype-Dependent
+- Fast decks (Team Rocket, Aggro): P2 wins **~70%** (first-attack privilege)
+- Slow evolution decks: P2 wins only **~36%** (going first enables setup)
+- **Novel insight**: Turn-order advantage is NOT universal — it depends on deck speed
+
+### Evolution Decks Are Non-Viable
+- Lose 94-100% against Basic-focused strategies
+- Card pool lacks fast evolution support (no Rare Candy equivalent for Stage 2)
+- Best strategy: Big Basics with high HP and tribal synergy
+
+### Team Rocket Tribal is the Strongest Archetype
+- 97-card synergy pool (largest in format)
+- Team Rocket's Mewtwo ex (280 HP, 160 dmg) as anchor
+- Dedicated draw/search engine via Team Rocket's Transceiver → any Rocket supporter
+- 52/48 vs Aggro (evenly matched — both viable)
+
+### Position-Balanced Testing is Essential
+- Without balancing, P2 bias inflates win rates by 20-30 percentage points
+- All experiments now counter-balance P1/P2 assignments
 
 ## Card Pool Summary
 

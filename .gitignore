@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 venv/
 phase1_analysis.json
+experiment_results.json
