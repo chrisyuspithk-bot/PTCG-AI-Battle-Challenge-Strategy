@@ -82,18 +82,21 @@ def select_action(obs: dict) -> list[int]:
         want_swap = (bbd > mdmg and bbh > mhp/2) or (mhp < 80 and len(mb) > 0)
 
         bi, bp = 0, 99
+        has_attack = any(int(o.get('type',-1) or -1) == ATTACK for o in opts)
+
         for i, o in enumerate(opts):
             t = int(o.get('type', -1) or -1)
             s = 50
             if t == ATTACK:
-                s = 0 if (mdmg > 0 and mdmg >= ohp) else (4 if mdmg > 0 else 50)
+                if mdmg > 0 and mdmg >= ohp: s = 0
+                elif mdmg > 0: s = 1  # ALWAYS attack if we have damage
             elif t == RETREAT:
-                s = 1 if under_threat else (3 if want_swap else (7 if mhp < 100 and len(mb) > 0 else 25))
-            elif t == EVOLVE: s = 2
-            elif t == PLAY: s = 5 if len(mb) < 3 else 11
+                s = 2 if under_threat else (3 if want_swap else (7 if mhp < 100 and len(mb) > 0 else 25))
+            elif t == EVOLVE: s = 4
+            elif t == PLAY: s = 6 if len(mb) < 3 else 12
             elif t == ATTACH:
-                s = 6 if (not ea and (mdmg >= bbd or bbd == 0)) else (8 if not ea else 20)
-            elif t in (ABILITY, DISCARD): s = 9
+                s = 5 if not ea else 20
+            elif t in (ABILITY, DISCARD): s = 10
             elif t == END: s = 99
             if s < bp: bp, bi = s, i
         return [bi] or [0]
