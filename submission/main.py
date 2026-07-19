@@ -1,5 +1,6 @@
-"""PTCG AI Battle - Team Rocket Control v4 (ROBUST)
-Engine: cabt - Integer enums + never-return-empty + card data fallback."""
+"""PTCG AI Battle - Mega Lucario ex v1 (META PIVOT)
+Engine: cabt - Threat-aware heuristic + ladder-winning Mega Lucario deck.
+Deck: 15 Pokemon / 35 trainers / 10 energy — 27 unique card types."""
 
 import os, sys, traceback
 from typing import Optional
@@ -14,8 +15,10 @@ SEL_MAIN = 0
 
 # Known card HP/damage (fallback when attacks field missing)
 CARD = {
-    431: (280,160), 24: (230,120), 414: (120,90),
+    431: (280,160), 24: (230,120), 414: (120,90),   # TR deck
     425: (120,80),  409: (130,70),  408: (70,30), 440: (60,20),
+    974: (70,20),   678: (340,220), 673: (80,30),    # Mega Lucario deck
+    674: (150,80),  676: (110,70),  675: (110,50), 235: (30,0),
 }
 
 def read_deck() -> list[int]:
