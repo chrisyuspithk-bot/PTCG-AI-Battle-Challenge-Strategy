@@ -46,25 +46,17 @@ def _dmg(p):
 
 def select_action(obs: dict) -> list[int]:
     sel = obs.get('select')
-    if not sel: return []
+    if not sel: return [0]
     opts = sel.get('option') or []
-    n = len(opts)
-    if n == 0: return []
+    if not opts: return [0]
 
+    n = len(opts)
     mc = max(int(sel.get('maxCount', 1) or 1), 1)
     mic = max(int(sel.get('minCount', 0) or 0), 0)
-
-    # SAFETY: never return empty when options exist
-    def _safe(result):
-        if not result and n > 0:
-            return [0][:mc]
-        return result[:mc]
-
-    if n == 1: return _safe([0])
-
     sel_type = sel.get('type', -1)
 
-    if sel_type == SEL_MAIN:
+    # MAIN action: threat-aware priority
+    if sel_type == 0:
         cur = obs.get('current') or {}
         pls = cur.get('players') or []
         yi = int(cur.get('yourIndex', 0) or 0)
@@ -73,10 +65,8 @@ def select_action(obs: dict) -> list[int]:
         ma = (me.get('active') or [None])[0]
         oa = (op.get('active') or [None])[0]
         mb = me.get('bench') or []
-        mhp = _hp(ma) if ma else 0
-        ohp = _hp(oa) if oa else 999
-        mdmg = _dmg(ma) if ma else 0
-        odmg = _dmg(oa) if oa else 0
+        mhp, ohp = _hp(ma) if ma else 0, _hp(oa) if oa else 999
+        mdmg, odmg = _dmg(ma) if ma else 0, _dmg(oa) if oa else 0
         iko = mdmg > 0 and mdmg >= ohp
         ocko = odmg > 0 and odmg >= mhp
         ea = cur.get('energyAttached', False)
@@ -97,10 +87,11 @@ def select_action(obs: dict) -> list[int]:
             elif t in (ABILITY, DISCARD): p = 6
             elif t == END: p = 99
             if p < bp: bp, bi = p, i
+        return [int(bi)] or [0]
 
-        return _safe([bi])
-
-    return _safe(list(range(max(mic, min(mc, n)))))
+    # Sub-selection
+    count = max(mic, min(mc, n))
+    return list(range(count)) or [0]
 
 def agent(obs_dict: dict) -> list[int]:
     global _CALL, _DECK
