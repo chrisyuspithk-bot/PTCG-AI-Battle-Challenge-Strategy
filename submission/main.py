@@ -1,6 +1,5 @@
-"""PTCG AI Battle - Mega Lucario ex v1 (META PIVOT)
-Engine: cabt - Threat-aware heuristic + ladder-winning Mega Lucario deck.
-Deck: 15 Pokemon / 35 trainers / 10 energy — 27 unique card types."""
+"""PTCG AI Battle - Mega Lucario ex v2 (SMARTER PRIORITIES)
+Engine: cabt - Bench-aware: finds strongest attacker, retreats weak actives."""
 
 import os, sys, traceback
 from typing import Optional
@@ -58,7 +57,7 @@ def select_action(obs: dict) -> list[int]:
     mic = max(int(sel.get('minCount', 0) or 0), 0)
     sel_type = sel.get('type', -1)
 
-    # MAIN action: threat-aware priority
+    # MAIN action: smarter priority
     if sel_type == 0:
         cur = obs.get('current') or {}
         pls = cur.get('players') or []
@@ -70,27 +69,34 @@ def select_action(obs: dict) -> list[int]:
         mb = me.get('bench') or []
         mhp, ohp = _hp(ma) if ma else 0, _hp(oa) if oa else 999
         mdmg, odmg = _dmg(ma) if ma else 0, _dmg(oa) if oa else 0
-        iko = mdmg > 0 and mdmg >= ohp
-        ocko = odmg > 0 and odmg >= mhp
         ea = cur.get('energyAttached', False)
-        best_bdmg = max((_dmg(b) for b in mb), default=0)
+
+        # Find strongest bench attacker
+        bbi, bbd, bbh = -1, 0, 0
+        for i, b in enumerate(mb):
+            d = _dmg(b); h = _hp(b)
+            if d > bbd or (d == bbd and h > bbh):
+                bbi, bbd, bbh = i, d, h
+
+        under_threat = odmg > 0 and odmg >= mhp
+        want_swap = (bbd > mdmg and bbh > mhp/2) or (mhp < 80 and len(mb) > 0)
 
         bi, bp = 0, 99
         for i, o in enumerate(opts):
             t = int(o.get('type', -1) or -1)
-            p = 50
+            s = 50
             if t == ATTACK:
-                p = 0 if iko else (5 if mdmg > 0 else 50)
+                s = 0 if (mdmg > 0 and mdmg >= ohp) else (4 if mdmg > 0 else 50)
             elif t == RETREAT:
-                p = 1 if (ocko and len(mb)>0) else (8 if mhp<50 and len(mb)>0 else 30)
-            elif t == EVOLVE: p = 2
-            elif t == PLAY: p = 3 if len(mb) < 3 else 10
+                s = 1 if under_threat else (3 if want_swap else (7 if mhp < 100 and len(mb) > 0 else 25))
+            elif t == EVOLVE: s = 2
+            elif t == PLAY: s = 5 if len(mb) < 3 else 11
             elif t == ATTACH:
-                p = 3 if (not ea and best_bdmg > mdmg > 0) else (4 if not ea else 20)
-            elif t in (ABILITY, DISCARD): p = 6
-            elif t == END: p = 99
-            if p < bp: bp, bi = p, i
-        return [int(bi)] or [0]
+                s = 6 if (not ea and (mdmg >= bbd or bbd == 0)) else (8 if not ea else 20)
+            elif t in (ABILITY, DISCARD): s = 9
+            elif t == END: s = 99
+            if s < bp: bp, bi = s, i
+        return [bi] or [0]
 
     # Sub-selection
     count = max(mic, min(mc, n))
